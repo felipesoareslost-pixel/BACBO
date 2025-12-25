@@ -1,0 +1,242 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row">
+  <div class="col-md-8">
+    <h4>Painel de Análise</h4>
+    <form method="post">
+      <div class="mb-3">
+        <label class="form-label">Sequência da mesa (B P T separados por espaço ou vírgula)</label>
+        <textarea class="form-control" name="sequence" rows="4">B B P P B P</textarea>
+      </div>
+      <button class="btn btn-primary">Analisar</button>
+    </form>
+
+    {% if result %}
+    <hr>
+    <h5>Recomendações</h5>
+    <div class="row">
+      <div class="col-md-6">
+        <h6>Agressivo</h6>
+        <p><strong>Recomendação:</strong> <span class="badge bg-success">{{ result.modes.aggressive.recommendation }}</span></p>
+        <p><strong>Confiança:</strong> {{ result.modes.aggressive.confidence }}</p>
+      </div>
+      <div class="col-md-6">
+        <h6>Conservador</h6>
+        <p><strong>Recomendação:</strong>
+          {% if result.modes.conservative.recommendation != 'N/A' %}
+            <span class="badge bg-primary">{{ result.modes.conservative.recommendation }}</span>
+          {% else %}
+            <span class="text-muted">N/A (sem confiança suficiente)</span>
+          {% endif %}
+        </p>
+        <p><strong>Confiança:</strong> {{ result.modes.conservative.confidence }}</p>
+      </div>
+    </div>
+
+    <p><strong>Probabilidades (últimos dados):</strong>
+      Banker={{ result.probabilities['BANKER'] }}, Player={{ result.probabilities['PLAYER'] }}, Tie={{ result.probabilities['TIE'] }}</p>
+
+    <p><strong>Notas:</strong> {{ result.notes|join('; ') }}</p>
+
+    <h6>Análise de Manipulação</h6>
+    {% set a = analysis if analysis else result.analysis %}
+    {% if a.manipulated %}
+      <div class="alert alert-warning">Possível manipulação: {{ a.reasons|join('; ') }}</div>
+    {% else %}
+      <div class="alert alert-info">Sem sinais fortes de manipulação. Máx run: {{ a.max_run }}, alternâncias: {{ a.alt_count }}</div>
+    {% endif %}
+    <hr>
+    <h5>Gráfico de Probabilidades</h5>
+    <div class="mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div><strong>Probabilidades</strong></div>
+        <div>
+          <button class="btn btn-sm btn-outline-secondary" onclick="downloadChart('probChart','probabilities.png')">Baixar PNG</button>
+        </div>
+      </div>
+      <canvas id="probChart" width="400" height="150"></canvas>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+    (function(){
+      try{
+        const result = {{ result|tojson|safe }};
+        const probs = result.probabilities || {'BANKER':0,'PLAYER':0,'TIE':0};
+        const labels = ['Banker','Player','Tie'];
+        const data = [probs['BANKER']||0, probs['PLAYER']||0, probs['TIE']||0];
+        const colors = ['#0d6efd','#198754','#6c757d'];
+        const ctx = document.getElementById('probChart').getContext('2d');
+        const maxVal = Math.max(...data, 0.001);
+        // color intensity by value
+        const bg = data.map((v,i)=> colors[i]);
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Probabilidades (últimos dados)',
+              data: data.map(x=> Number((x*100).toFixed(2))),
+              backgroundColor: bg,
+              borderColor: bg,
+              borderWidth: 1
+            }]
+          },
+          options: {
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: { callback: function(v){ return v + "%" }}
+              }
+            },
+            plugins: {
+              legend: { display: false }
+            }
+          }
+        });
+      }catch(e){console.debug(e)}
+    })();
+    </script>
+    <hr>
+    <h5>Gráfico de Confiança (Agressivo vs Conservador)</h5>
+    <div class="mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div><strong>Confiança</strong></div>
+        <div>
+          <button class="btn btn-sm btn-outline-secondary" onclick="downloadChart('confChart','confidence.png')">Baixar PNG</button>
+        </div>
+      </div>
+      <canvas id="confChart" width="400" height="120"></canvas>
+    </div>
+    <script>
+    (function(){
+      try{
+        const result = {{ result|tojson|safe }};
+        const a = result.modes.aggressive || {confidence:0, recommendation:'N/A'};
+        const c = result.modes.conservative || {confidence:0, recommendation:'N/A'};
+        const labels = ['Agressivo','Conservador'];
+        const data = [Math.round((a.confidence||0)*100), Math.round((c.confidence||0)*100)];
+        const colors = ['#ffc107','#0dcaf0'];
+        const ctx = document.getElementById('confChart').getContext('2d');
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Confiança (%)',
+              data: data,
+              backgroundColor: colors,
+              borderColor: colors,
+              borderWidth: 1
+            }]
+          },
+          options: {
+            scales: { y: { beginAtZero: true, max: 100 } },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: function(context){
+                    const idx = context.dataIndex;
+                    const mode = idx===0? result.modes.aggressive : result.modes.conservative;
+                    const rec = mode.recommendation || 'N/A';
+                    const conf = (mode.confidence||0);
+                    const notes = (result.notes && result.notes.length)? result.notes.join('; '): '';
+                    const analysis = result.analysis || {};
+                    const reasons = (analysis.manipulated && analysis.reasons)? analysis.reasons.join('; '): '';
+                    return [`Recomendação: ${rec}`, `Confiança: ${Math.round(conf*100)}%`, notes? `Notas: ${notes}`: null, reasons? `Sinais: ${reasons}`: null].filter(x=>x!==null);
+                  }
+                }
+              }
+            }
+          }
+        });
+      }catch(e){console.debug(e)}
+    })();
+    </script>
+    <div class="d-flex gap-2 mb-4">
+      <a class="btn btn-sm btn-outline-primary" href="/export_history">Exportar histórico (CSV)</a>
+      <button class="btn btn-sm btn-outline-secondary" onclick="downloadHistoryJSON()">Baixar histórico (JSON)</button>
+    </div>
+
+    <script>
+    function downloadChart(canvasId, filename){
+      try{
+        const c = document.getElementById(canvasId);
+        const url = c.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }catch(e){console.debug(e)}
+    }
+
+    async function downloadHistoryJSON(){
+      try{
+        const res = await fetch('/history');
+        if(!res.ok) return;
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'history.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }catch(e){console.debug(e)}
+    }
+    </script>
+    <hr>
+    <h5>Histórico recente</h5>
+    {% set db = namespace(rows=[]) %}
+    {# carregar histórico direto via consulta simples usando sqlite (servidor) - app popula `history` #}
+    {% set rows = [] %}
+    {# We'll request the server to include history in the template if needed; fallback: nothing #}
+    {% if false %}
+      {# placeholder to keep layout consistent #}
+    {% endif %}
+    <p class="text-muted">Últimas 20 análises (salvas localmente)</p>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped">
+        <thead>
+          <tr><th>Quando (UTC)</th><th>Sequência</th><th>Agressivo</th><th>Conservador</th><th>Sinais</th></tr>
+        </thead>
+        <tbody id="history-body">
+          <!-- preenchido dinamicamente via fetch -->
+        </tbody>
+      </table>
+    </div>
+
+    <script>
+    async function loadHistory(){
+      try{
+        const res = await fetch('/history');
+        if(!res.ok) return;
+        const json = await res.json();
+        const body = document.getElementById('history-body');
+        body.innerHTML = '';
+        for(const row of json){
+          const a = row.result.modes.aggressive;
+          const c = row.result.modes.conservative;
+          const anal = row.result.analysis;
+          const tr = document.createElement('tr');
+          function badge(r){
+            if(!r || r.recommendation=='N/A') return '<span class="text-muted">N/A</span>';
+            const conf = r.confidence;
+            const cls = conf>=0.5? 'bg-success text-white': (conf>=0.25? 'bg-warning text-dark': 'bg-danger text-white');
+            return `<span class="badge ${cls}">${r.recommendation} (${conf})</span>`;
+          }
+          tr.innerHTML = `<td>${row.timestamp}</td><td>${row.sequence}</td><td>${badge(a)}</td><td>${badge(c)}</td><td>${anal.manipulated? anal.reasons.join('; '): '—'}</td>`;
+          body.appendChild(tr);
+        }
+      }catch(e){console.debug(e)}
+    }
+    window.addEventListener('load', loadHistory);
+    </script>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
