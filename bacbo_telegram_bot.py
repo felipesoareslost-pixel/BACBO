@@ -164,10 +164,17 @@ async def fetch_rounds(session: aiohttp.ClientSession) -> List[Dict]:
     """Busca rounds da API com retry automático"""
     max_retries = 3
     timeout = aiohttp.ClientTimeout(total=30, connect=10)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Referer': 'https://aplicacaohack.com/',
+        'Origin': 'https://aplicacaohack.com'
+    }
     
     for attempt in range(max_retries):
         try:
-            async with session.get(API_URL, timeout=timeout) as resp:
+            async with session.get(API_URL, timeout=timeout, headers=headers) as resp:
                 resp.raise_for_status()
                 payload = await resp.json()
                 if isinstance(payload, dict) and payload.get("status") == "success":
