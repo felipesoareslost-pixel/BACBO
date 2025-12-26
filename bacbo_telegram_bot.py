@@ -161,38 +161,50 @@ def detect_signal(rounds: List[Dict]) -> Optional[Dict[str, str]]:
 
 
 async def fetch_rounds(session: aiohttp.ClientSession) -> List[Dict]:
-    try:
-        async with session.get(API_URL, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            resp.raise_for_status()
-            payload = await resp.json()
-            if isinstance(payload, dict) and payload.get("status") == "success":
-                data = payload.get("data", [])
-            elif isinstance(payload, list):
-                data = payload
-            else:
-                logger.warning("Formato inesperado da API: %s", payload)
-                return []
+    """Busca rounds da API com retry automático"""
+    max_retries = 3
+    timeout = aiohttp.ClientTimeout(total=30, connect=10)
+    
+    for attempt in range(max_retries):
+        try:
+            async with session.get(API_URL, timeout=timeout) as resp:
+                resp.raise_for_status()
+                payload = await resp.json()
+                if isinstance(payload, dict) and payload.get("status") == "success":
+                    data = payload.get("data", [])
+                elif isinstance(payload, list):
+                    data = payload
+                else:
+                    logger.warning("Formato inesperado da API: %s", payload)
+                    return []
 
-            rounds = [
-                {
-                    "id": item.get("id"),
-                    "hash": item.get("hash"),
-                    "data_hora": item.get("data_hora"),
-                    "resultado": map_result(item.get("resultado", "")),
-                }
-                for item in data
-            ]
-            logger.debug("Rounds obtidos: %d", len(rounds))
-            return rounds
-    except asyncio.TimeoutError:
-        logger.error("Timeout ao buscar rounds da API")
-        return []
-    except aiohttp.ClientError as e:
-        logger.error("Erro de conexão com a API: %s", e)
-        return []
-    except Exception as e:
-        logger.error("Erro inesperado ao buscar rounds: %s", e)
-        return []
+                rounds = [
+                    {
+                        "id": item.get("id"),
+                        "hash": item.get("hash"),
+                        "data_hora": item.get("data_hora"),
+                        "resultado": map_result(item.get("resultado", "")),
+                    }
+                    for item in data
+                ]
+                logger.debug("Rounds obtidos: %d", len(rounds))
+                return rounds
+        except asyncio.TimeoutError:
+            logger.warning("Timeout ao buscar rounds da API (tentativa %d/%d)", attempt + 1, max_retries)
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            continue
+        except aiohttp.ClientError as e:
+            logger.error("Erro de conexão com a API (tentativa %d/%d): %s", attempt + 1, max_retries, e)
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            continue
+        except Exception as e:
+            logger.error("Erro inesperado ao buscar rounds: %s", e)
+            return []
+    
+    logger.error("Falha após %d tentativas de buscar rounds da API", max_retries)
+    return []
 
 
 async def send_message(session: aiohttp.ClientSession, text: str) -> None:
