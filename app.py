@@ -5,12 +5,16 @@ e executar o bot do Telegram em background
 import os
 import asyncio
 import threading
-from flask import Flask
+import requests
+from flask import Flask, jsonify
 
 app = Flask(__name__)
 
 # Variável para controlar se o bot já está rodando
 bot_running = False
+
+# URL da API original
+ORIGINAL_API_URL = "https://aplicacaohack.com/api_bacbo.php"
 
 @app.route('/')
 def home():
@@ -25,6 +29,23 @@ def home():
 def health():
     """Endpoint de health check para o Render"""
     return {'status': 'healthy'}, 200
+
+@app.route('/api_bacbo.php')
+def api_proxy():
+    """Proxy para a API do BACBO - contorna bloqueio de IP"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+            'Referer': 'https://aplicacaohack.com/'
+        }
+        response = requests.get(ORIGINAL_API_URL, headers=headers, timeout=30)
+        response.raise_for_status()
+        return jsonify(response.json()), 200
+    except requests.Timeout:
+        return jsonify({'status': 'error', 'message': 'API timeout'}), 504
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 def run_bot():
     """Executa o bot do Telegram em background"""

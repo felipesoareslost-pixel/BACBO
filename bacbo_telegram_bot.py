@@ -17,7 +17,15 @@ if sys.platform == "win32":
 
 import aiohttp
 
-API_URL = os.getenv("BACBO_API_URL", "https://aplicacaohack.com/api_bacbo.php")
+# Detectar se está rodando no Render
+IS_RENDER = os.getenv("RENDER", "false").lower() == "true"
+
+# Se estiver no Render, usa o proxy local, senão usa a API direta
+if IS_RENDER:
+    API_URL = os.getenv("BACBO_API_URL", "http://localhost:10000/api_bacbo.php")
+else:
+    API_URL = os.getenv("BACBO_API_URL", "https://aplicacaohack.com/api_bacbo.php")
+
 BOT_TOKEN = os.getenv(
     "TELEGRAM_BOT_TOKEN",
     "8440000433:AAEgTueQUeWHD94uN7th3deXb6Pje_7x7I4",
