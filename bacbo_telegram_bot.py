@@ -337,6 +337,12 @@ async def run_bot() -> None:
                         await send_message(session, message)
                         waiting_result = True
                         signal_bet = signal["bet"]
+                    else:
+                        # Log para debug: mostrar os últimos rounds
+                        filtered = [r for r in rounds if r["resultado"] in ("Player", "Banker")]
+                        recent = filtered[:6]
+                        seq = [r["resultado"] for r in recent]
+                        logger.info("📊 Sem sinal. Sequência atual: %s", seq)
                     
                     last_hash = current_hash
 
@@ -354,8 +360,13 @@ async def run_bot() -> None:
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
+async def main():
+    """Função principal para executar o bot"""
+    await run_bot()
+
+
 if __name__ == "__main__":
     try:
-        asyncio.run(run_bot())
+        asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Bot finalizado pelo usuário.")
